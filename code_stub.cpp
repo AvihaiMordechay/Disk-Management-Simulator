@@ -414,7 +414,7 @@ public:
     // ------------------------------------------------------------------------
 
     // The function creates a file on disk.
-    int CreateFile(const string& fileName) {
+    int CreateFile(const string &fileName) {
         if (!is_formated) {
             cout << "ERR" << endl;
             return -1;
@@ -450,7 +450,7 @@ public:
     // ------------------------------------------------------------------------
 
     // The function opens a file on disk.
-    int openFile(const string& FileName) {
+    int openFile(const string &FileName) {
         if (is_formated) {
             fsInode *fsInode = findFsInodeInMainDir(FileName);
             if (fsInode == nullptr) {
@@ -508,16 +508,16 @@ public:
     // The function writes to a file.
     int writeToFile(int fd, char *buf, int len) {
         if (len <= 0) {
-            cout << "ERR" << endl;
+            cout << "ERR: The number of characters you want to write is less than zero." << endl;
             return -1;
         } else if (!is_formated) {
-            cout << "ERR" << endl;
+            cout << "ERR: The disk is not formatted." << endl;
             return -1;
         } else if (fd < 0 || fd >= this->openFileDescriptors.size()) {
-            cout << "ERR" << endl;
+            cout << "ERR: The fd num you entered is incorrect." << endl;
             return -1;
         } else if (!this->openFileDescriptors[fd].isInUse()) {
-            cout << "ERR" << endl;
+            cout << "ERR: Unable to write to file that is closed." << endl;
             return -1;
         } else {
             fsInode *fsInode = this->openFileDescriptors[fd].getInode();
@@ -528,37 +528,32 @@ public:
             if (!isThereFileFreeSpace(fd, len)) {
                 len = (3 + sizeOfBlock + (sizeOfBlock * sizeOfBlock)) * sizeOfBlock - fsInode->getFileSize();
                 if (len == 0) {
-                    cout << "ERR" << endl;
+                    cout << "ERR: The file is full." << endl;
                     return -1;
                 }
                 buf[len] = '\0';
             }
             vector<int> freeBlocks = findFreeBlocksInDisk(fsInode, len);
-            if (freeBlocks.size() == 1 && freeBlocks[0] == -1) {
-                cout << "ERR" << endl;
+            if (freeBlocks.empty()) {
+                cout << "ERR: There is no space on the disk." << endl;
                 return -1;
             } else { // There is space on the disk.
                 char block[sizeOfBlock + 1];
-                int lenCharsWritten;
                 // Option One: If no written before OR written before and
                 //             there is no space to write to the last block we wrote in the past.
-                if (freeBlocks[0] == -1) {
-                    lenCharsWritten = writeToFileOptionOne(fsInode, freeBlocks, block, buf);
-                }
-                    // Option Two: If written before AND There is space to write to the
+                if (freeBlocks[0] == -1)
+                    writeToFileOptionOne(fsInode, freeBlocks, block, buf);
+                else  // Option Two: If written before AND There is space to write to the
                     // last block we wrote in the past.
-                else {
-                    lenCharsWritten = writeToFileOptionTwo(fsInode, freeBlocks, block, buf, len);
-                }
-                fsInode->setFileSize(fsInode->getFileSize() + lenCharsWritten);
-                int remainder = lenCharsWritten - ((lenCharsWritten / sizeOfBlock) * sizeOfBlock);
-                if (fsInode->getRemainingPlacesInLastBlock() == 0 && remainder > 0) {
+                    writeToFileOptionTwo(fsInode, freeBlocks, block, buf, len);
+                fsInode->setFileSize(fsInode->getFileSize() + len);
+                int remainder = len - ((len / sizeOfBlock) * sizeOfBlock);
+                if (fsInode->getRemainingPlacesInLastBlock() == 0 && remainder > 0)
                     fsInode->setRemainingPlacesInLastBlock(sizeOfBlock - remainder);
-                } else {
+                else {
                     fsInode->setRemainingPlacesInLastBlock(fsInode->getRemainingPlacesInLastBlock() - remainder);
-                    if (fsInode->getRemainingPlacesInLastBlock() < 0) {
+                    if (fsInode->getRemainingPlacesInLastBlock() < 0)
                         fsInode->setRemainingPlacesInLastBlock(fsInode->getRemainingPlacesInLastBlock() + sizeOfBlock);
-                    }
                 }
                 return 1;
             }
@@ -568,7 +563,7 @@ public:
     // ------------------------------------------------------------------------
 
     // The function delete a file from the disk.
-    int delFile(const string& FileName) {
+    int delFile(const string &FileName) {
         if (!is_formated) {
             cout << "ERR" << endl;
             return -1;
@@ -744,7 +739,7 @@ public:
 // ------------------------------------------------------------------------
 
     // The function copies an existing file to a new file that will be created and will be closed.
-    int copyFile(const string& srcFileName, const string& destFileName) {
+    int copyFile(const string &srcFileName, const string &destFileName) {
         if (!is_formated) {
             cout << "ERR" << endl;
             return -1;
@@ -839,7 +834,7 @@ public:
 // ------------------------------------------------------------------------
 
     // The function renames the file.
-    int renameFile(const string& oldFileName, const string& newFileName) {
+    int renameFile(const string &oldFileName, const string &newFileName) {
         if (!is_formated) {
             cout << "ERR" << endl;
             return -1;
@@ -972,8 +967,7 @@ public:
 
 // The function writes to file if no written before OR written before and
 // ere is no space to write to the last block we wrote in the past.
-    int writeToFileOptionOne(fsInode *fsInode, vector<int> freeBlocks, char *block, char *buf) {
-        int lenCharsWritten = 0;
+    void writeToFileOptionOne(fsInode *fsInode, vector<int> freeBlocks, char *block, char *buf) {
         char pointerBlockValue;
         for (int i = 1, pointerBuffer = 0; i < freeBlocks.size(); i++) {
             int j = i + fsInode->getBlockInUseIncludePointers();
@@ -987,13 +981,9 @@ public:
                 fseek(sim_disk_fd, freeBlocks[i] * sizeOfBlock, SEEK_SET);
                 strncpy(block, buf + (pointerBuffer * sizeOfBlock), sizeOfBlock);
                 block[sizeOfBlock] = '\0';
-                lenCharsWritten += (int) strlen(block);
                 fwrite(block, 1, sizeOfBlock, sim_disk_fd);
                 pointerBuffer++;
-            } else if (j <= 4 + sizeOfBlock) { // 4 = 1 pointer block + 3 direct block
-                if (fsInode->getSingleInDirect() == -1 && freeBlocks.size() - j < 2) {
-                    return lenCharsWritten;
-                }
+            } else if (j < 5 + sizeOfBlock) {
                 if (fsInode->getSingleInDirect() == -1) {
                     fsInode->setSingleInDirect(freeBlocks[i]);
                     fsInode->setIndexSingleBlock(0);
@@ -1007,20 +997,13 @@ public:
                 fseek(sim_disk_fd, freeBlocks[i] * sizeOfBlock, SEEK_SET);
                 strncpy(block, buf + (pointerBuffer * sizeOfBlock), sizeOfBlock);
                 block[sizeOfBlock] = '\0';
-                lenCharsWritten += (int) strlen(block);
                 fwrite(block, 1, sizeOfBlock, sim_disk_fd);
                 pointerBuffer++;
             } else {
-                if (fsInode->getDoubleInDirect() == -1 && freeBlocks.size() - j < 3) {
-                    return lenCharsWritten;
-                }
                 if (fsInode->getDoubleInDirect() == -1) {
                     fsInode->setDoubleInDirect(freeBlocks[i]);
                     fsInode->setIndexExternalDoubleBlock(0);
                     i++;
-                }
-                if (fsInode->getInternalDoubleBlock() == -1 && freeBlocks.size() - j < 2) {
-                    return lenCharsWritten;
                 }
                 if (fsInode->getIndexExternalDoubleBlock() < sizeOfBlock && fsInode->getInternalDoubleBlock() == -1) {
                     fseek(sim_disk_fd,
@@ -1046,7 +1029,6 @@ public:
                 fseek(sim_disk_fd, freeBlocks[i] * sizeOfBlock, SEEK_SET);
                 strncpy(block, buf + (pointerBuffer * sizeOfBlock), sizeOfBlock);
                 block[sizeOfBlock] = '\0';
-                lenCharsWritten += (int) strlen(block);
                 fwrite(block, 1, sizeOfBlock, sim_disk_fd);
                 pointerBuffer++;
 
@@ -1056,23 +1038,18 @@ public:
                 }
             }
         }
-        fsInode->setBlockInUseWithoutPointers(fsInode->getBlockInUseWithoutPointers() + static_cast<int>(ceil(
-                static_cast<double>(strlen(buf)) / this->sizeOfBlock)));
-        fsInode->setBlockInUseIncludePointers(fsInode->getBlockInUseIncludePointers() + (int) freeBlocks.size() - 1);
+        fsInode->setBlockInUseIncludePointers((int) freeBlocks.size() - 1);
         updateBitVector(freeBlocks);
-        return lenCharsWritten;
-
     }
+
 
 // ------------------------------------------------------------------------
 
 // The function writes to file if written before AND There is space to write to the
 // last block we wrote in the past.
-    int writeToFileOptionTwo(fsInode *fsInode, const vector<int> &freeBlocks, char *block, char *buf, int len) {
-        int lenCharsWritten = 0;
+    void writeToFileOptionTwo(fsInode *fsInode, const vector<int> &freeBlocks, char *block, char *buf, int len) {
         strncpy(block, buf, fsInode->getRemainingPlacesInLastBlock());
         block[fsInode->getRemainingPlacesInLastBlock()] = '\0';
-        lenCharsWritten += (int) strlen(block);
         int indexOfTheLastBlock = sizeOfBlock - fsInode->getRemainingPlacesInLastBlock();
         int theLastBlock = fsInode->getLastBlockWritten();
         if (theLastBlock == fsInode->getDirectBlock1() || theLastBlock == fsInode->getDirectBlock2() ||
@@ -1101,9 +1078,9 @@ public:
             fwrite(block, 1, strlen(block), sim_disk_fd);
         }
         if (freeBlocks.size() > 1)
-            lenCharsWritten += writeToFileOptionOne(fsInode, freeBlocks, block, buf + strlen(block));
-        return lenCharsWritten;
+            writeToFileOptionOne(fsInode, freeBlocks, block, buf + strlen(block));
     }
+
 
 // ------------------------------------------------------------------------
 
